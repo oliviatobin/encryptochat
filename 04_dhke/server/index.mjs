@@ -1,58 +1,55 @@
 import { WebSocketServer } from "ws";
-import crypto from "crypto"
-import { get } from "http";
 
 const wss = new WebSocketServer({ port: 3000 })
 
 let left
 let right
-let passwordLeft
-let passwordRight
+
+let leftPublicKey
+let rightPublicKey
 
 wss.on("connection", (ws) => {
   let getOther
-  let getPassword
-  let getOtherPassword
   if (left === undefined) {
     left = ws
-    passwordLeft = "#" + Math.random().toString(36).substring(2);
     getOther = () => right
-    getPassword = () => passwordLeft
-    getOtherPassword = () => passwordRight
-    ws.send(passwordLeft)
   } else if (right === undefined) {
     right = ws
-    passwordRight = "#" + Math.random().toString(36).substring(2);
     getOther = () => left
-    getPassword = () => passwordRight
-    getOtherPassword = () => passwordLeft
-    ws.send(passwordRight)
   } else {
     ws.send("chat room full")
     return
   }
+
   ws.on("message", (data) => {
     const message = data.toString()
-    console.log(message)
     const other = getOther()
-    if (other === undefined) {
-      ws.send("chat partner not connected")
-      return
+
+    console.log("message is: " + message)
+
+    // send the clients' public keys to the other client
+    if (message.charAt(0) === "#") {
+      if (other === left) {
+        rightPublicKey = message.substring(1)
+      } else {
+        leftPublicKey = message.substring(1)
+      }
+      if (other !== undefined) {
+        if (other === left) {
+          ws.send("#" + leftPublicKey)
+          other.send("#" + rightPublicKey)
+        } else if (other === right) {
+          ws.send("#" + rightPublicKey)
+          other.send("#" + leftPublicKey)
+        }
+      }
+    } else {
+      if (other === undefined) {
+        ws.send("chat partner not connected")
+        return
+      } 
+
+      other.send(message)
     }
-
-    // decrypt the message from sender
-    const password = getPassword()
-    const decipher = crypto.createDecipher("aes128", password)
-    let plainText = decipher.update(message, "hex", "utf8")
-    plainText += decipher.final("utf8")
-
-    // reencrypt for sendee
-    const otherPassword = getOtherPassword()
-    const cipher = crypto.createCipher("aes128", otherPassword)
-    let encryptedMessage = cipher.update(plainText, "utf8", "hex")
-    encryptedMessage += cipher.final("hex")
-    console.log(encryptedMessage)
-    other.send(encryptedMessage)
   })
 })
-
